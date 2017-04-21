@@ -5,14 +5,18 @@ from enum import Enum
 
 # needs python 3
 
-WORLD_WIDTH = 500
-WORLD_HEIGHT = 500
+SQUARE_SIZE = 10
 
 UPDATE_TIME = 0.1
 
 ROAD_LENGTH = 50
+
+WORLD_WIDTH = SQUARE_SIZE * ROAD_LENGTH
+WORLD_HEIGHT = WORLD_WIDTH
+
 MAX_SPEED = 5
-NUM_CARS = 2
+NUM_CARS = 5
+CAR_SPEED = 4
 
 LIGHT_POS = ROAD_LENGTH / 2 # the traffic light is halfway down the road
 
@@ -33,6 +37,7 @@ black = (0,0,0)
 pink = (255,200,200)
 yellow = (255, 239, 0)
 orange = (255, 128, 0)
+fuchsia = (255, 0, 128)
 
 class LightState(Enum):
     RED = 0
@@ -45,20 +50,95 @@ class Car:
     def __init__(self):
         self.lane = random.randint(0, 3) # the lane also determines the direction
         # self.speed = random.randint(1, 5)
-        self.speed = 2
+        self.speed = CAR_SPEED
         self.pos = random.randint(0, ROAD_LENGTH - 1)
+        self.red_waiting = False
 
     def get_position(self):
         return self.pos
 
+    def get_speed(self):
+        return self.speed
+
     def get_lane(self):
        return self.lane
+
+    def will_crash(self, delta):
+        # first check if a collision with pedestrian will occur
+        if self.lane == 1:
+            for i in range(1, delta + 3):
+                new_pos = self.pos + i
+                new_pos %= ROAD_LENGTH
+                if isinstance(road[0][new_pos], Person):
+                    return True
+        if self.lane == 2 or self.lane == 3:
+            for i in range(1, delta + 3):
+                new_pos = self.pos - i
+                new_pos += ROAD_LENGTH
+                new_pos %= ROAD_LENGTH
+                if isinstance(road[self.lane - 1][new_pos], Person):
+                    return True
+        # now check if collision with car will occur
+        if self.lane < 2:
+            for i in range(1, delta + 3):
+                new_pos = self.pos + i
+                new_pos %= ROAD_LENGTH
+                if isinstance(road[self.lane][new_pos], Car):
+                    if road[self.lane][new_pos].get_speed() == 0:
+                        return True
+        else:
+            for i in range(1, delta + 3):
+                new_pos = self.pos - i
+                new_pos += ROAD_LENGTH
+                new_pos %= ROAD_LENGTH
+                if isinstance(road[self.lane][new_pos], Car) or isinstance(road[self.lane][new_pos], MyCar):
+                    if road[self.lane][new_pos].get_speed() == 0:
+                        return True
+        return False
 
     def update_state(self, new_lane = -1, new_speed = -1):
         if new_speed != -1:
             self.speed = new_speed
         if new_lane != -1:
             self.lane = new_lane
+        if LIGHT_STATE == LightState.RED:
+            if self.lane < 2:
+                if self.pos + self.speed >= LIGHT_POS - 5 and self.pos <= LIGHT_POS:
+                    self.speed = 0
+                    self.red_waiting = True
+                    return
+            else:
+                if self.pos - self.speed <= LIGHT_POS + 5 and self.pos >= LIGHT_POS:
+                    self.speed = 0
+                    self.red_waiting = True
+                    return
+        else:
+            self.red_waiting = False
+        if self.red_waiting:
+            return
+        if self.will_crash(CAR_SPEED):
+            if self.lane == 0:
+                if road[1][self.pos] is None:
+                    self.lane = 1
+                    if self.will_crash(CAR_SPEED):
+                        self.speed = 0
+            if self.lane == 1:
+                if road[0][self.pos] is None:
+                    self.lane = 0
+                    if self.will_crash(CAR_SPEED):
+                        self.speed = 0
+            if self.lane == 2:
+                if road[3][self.pos] is None:
+                    self.lane = 3
+                    if self.will_crash(CAR_SPEED):
+                        self.speed = 0
+            if self.lane == 3:
+                if road[2][self.pos] is None:
+                    self.lane = 2
+                    if self.will_crash(CAR_SPEED):
+                        self.speed = 0
+        else:
+            self.speed = CAR_SPEED
         if self.lane == 0 or self.lane == 1:
             self.pos += self.speed
             self.pos %= ROAD_LENGTH
@@ -67,8 +147,15 @@ class Car:
             self.pos -= self.speed
             self.pos %= ROAD_LENGTH
 
+    
+
     def __repr__(self):
         return ("CAR: Lane: " + str(self.lane) + ", Speed: " + str(self.speed) + ", Position: " + str(self.pos))
+
+class MyCar(Car):
+    def update_state(self, new_lane = -1, new_speed = -1):
+        # use the recommendation from the modules to do this
+        return
 
 class Person:
     def __init__(self, _pos):
@@ -90,6 +177,9 @@ def init_sim():
         c = Car()
         road[c.get_lane()][c.get_position()] = c
         cars.append(c)
+    mc = MyCar()
+    road[mc.get_lane()][mc.get_position()] = mc
+    cars.append(mc)
   
 def update_light():
     global LIGHT_TIME
@@ -110,15 +200,17 @@ def update_light():
         LIGHT_STATE = LightState.YELLOW
 
 def update_cars():
-    printed = False
+    old_positions = []
     for c in cars:
         i = c.get_lane()
         j = c.get_position()
-        road[i][j] = None
+        # road[i][j] = None
+        old_positions.append((i, j))
     for c in cars:
-        if not printed:
-            print(c)
+        print(c)
         c.update_state()
+    for pair in old_positions:
+        road[pair[0]][pair[1]] = None
     for c in cars:
         i = c.get_lane()
         j = c.get_position()
@@ -136,9 +228,11 @@ def update_pedestrians():
                     road[j + 1][i] = p_ref
                 road[j][i] = None
     # generate new pedestrians
-    recip_ped_prob = 5
+    recip_ped_prob = 3
     rand_max = recip_ped_prob * ROAD_LENGTH
     for i in range(ROAD_LENGTH):
+        if LIGHT_POS - 10 <= i <= LIGHT_POS + 10:
+            continue
         if road[0][i] is not None:
             continue
         r = random.randint(1, rand_max)
@@ -153,14 +247,18 @@ def update_sim():
     return 0
 
 def draw_everything(screen):
-    SQUARE_SIZE = 10
     for i in range(4):
         for j in range(ROAD_LENGTH):
             my_color = gray
             if isinstance(road[i][j], Person):
                 my_color = pink
-            if isinstance(road[i][j], Car):
-                my_color = blue
+            if isinstance(road[i][j], MyCar):
+                my_color = fuchsia
+            elif isinstance(road[i][j], Car):
+                if i < 2:
+                    my_color = blue
+                else:
+                    my_color = orange
             pygame.draw.rect(screen, my_color, (i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 0)
     if LIGHT_STATE == LightState.GREEN:
         pygame.draw.rect(screen, green, (4 * SQUARE_SIZE, LIGHT_POS * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 0)
