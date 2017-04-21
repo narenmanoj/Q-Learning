@@ -26,6 +26,7 @@ LIGHT_TIME = 0
 
 road = [] # lanes 0, 1 go in one way and 2, 3 go in the other
 cars = [] 
+objects = []
 
 red = (255,0,0)
 green = (0,255,0)
@@ -38,6 +39,7 @@ pink = (255,200,200)
 yellow = (255, 239, 0)
 orange = (255, 128, 0)
 fuchsia = (255, 0, 128)
+olive = (85, 107, 47)
 
 class LightState(Enum):
     RED = 0
@@ -86,6 +88,8 @@ class Car:
                 if isinstance(road[self.lane][new_pos], Car):
                     if road[self.lane][new_pos].get_speed() == 0:
                         return True
+                elif isinstance(road[self.lane][new_pos], Obstacle):
+                    return True
         else:
             for i in range(1, delta + 3):
                 new_pos = self.pos - i
@@ -94,6 +98,8 @@ class Car:
                 if isinstance(road[self.lane][new_pos], Car) or isinstance(road[self.lane][new_pos], MyCar):
                     if road[self.lane][new_pos].get_speed() == 0:
                         return True
+                elif isinstance(road[self.lane][new_pos], Obstacle):
+                    return True
         return False
 
     def update_state(self, new_lane = -1, new_speed = -1):
@@ -152,6 +158,19 @@ class Car:
     def __repr__(self):
         return ("CAR: Lane: " + str(self.lane) + ", Speed: " + str(self.speed) + ", Position: " + str(self.pos))
 
+class Obstacle:
+    def __init__(self):
+        self.pos = random.randint(LIGHT_POS - 9, LIGHT_POS + 9)
+        self.lane = random.randint(0, 1)
+        if self.lane == 1:
+            self.lane = 3
+
+    def get_position(self):
+        return self.pos
+
+    def get_lane(self):
+        return self.lane
+
 class MyCar(Car):
     def update_state(self, new_lane = -1, new_speed = -1):
         # use the recommendation from the modules to do this
@@ -180,6 +199,10 @@ def init_sim():
     mc = MyCar()
     road[mc.get_lane()][mc.get_position()] = mc
     cars.append(mc)
+    for i in range(5):
+        o = Obstacle()
+        road[o.get_lane()][o.get_position()] = o
+        objects.append(o)
   
 def update_light():
     global LIGHT_TIME
@@ -259,6 +282,8 @@ def draw_everything(screen):
                     my_color = blue
                 else:
                     my_color = orange
+            elif isinstance(road[i][j], Obstacle):
+                my_color = olive
             pygame.draw.rect(screen, my_color, (i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 0)
     if LIGHT_STATE == LightState.GREEN:
         pygame.draw.rect(screen, green, (4 * SQUARE_SIZE, LIGHT_POS * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 0)
